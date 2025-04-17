@@ -2,8 +2,8 @@ import numpy as np
 import cv2
 from kitti_run import KITTI_odom_loader
 from tqdm.auto import tqdm
-from lib.visualization import plotting
-from lib.visualization.video import play_trip
+from visualization import plotting
+from visualization.video import play_trip
 from matplotlib import pyplot as plt
 
 
