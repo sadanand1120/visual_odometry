@@ -530,7 +530,7 @@ if __name__ == "__main__":
 
         gt_path = []
         estimated_path = []
-        for i, gt_pose in enumerate(tqdm(kitti.gt_poses[:100], unit="pose")):
+        for i, gt_pose in enumerate(tqdm(kitti.gt_poses, unit="pose")):
             q_prev, q_cur, overlay = spvo.get_matches(kitti.images[i])
             # cv2.imshow("Matches", overlay)
             # cv2.waitKey(200)

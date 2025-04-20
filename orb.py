@@ -5,6 +5,42 @@ from tqdm.auto import tqdm
 from visualization import plotting
 from visualization.video import play_trip
 from matplotlib import pyplot as plt
+from sklearn.metrics import mean_squared_error
+
+
+def calc_accuracy(K: np.ndarray, W: int, H: int, gt_path: list, images: list):
+    """
+    K: 3x3 camera intrinsic matrix
+    W: width of the image
+    H: height of the image
+    gt_path: ground truth path list in CCS frame (x,z)
+    images: list of cv2 images
+    """
+    orb_feat = ORB_VO(K=K, W=W, H=H)
+    estimated_path = []
+    for i in tqdm(range(len(images)), unit="image"):
+        if i == 0:
+            cur_pose = np.eye(4, dtype=np.float64)
+            cur_pose[0, 3] = gt_path[i][0]
+            cur_pose[2, 3] = gt_path[i][1]
+        else:
+            q_prev, q_cur, img3 = orb_feat.get_matches(images[i - 1], images[i])
+            # cv2.imshow("Matches", img3)
+            # cv2.waitKey(200)
+            transf = orb_feat.get_relative_T(q_cur, q_prev)  # T_cur_CCS_to_prev_CCS
+            cur_pose = np.matmul(cur_pose, transf)   # T_cur_CCS_to_ref_CCS = T_prev_CCS_to_ref_CCS * T_cur_CCS_to_prev_CCS
+        # X-Z plane (CCS) is the ground plane
+        # So basically consider a point at the origin of the camera coordinate system, and we are tracing its path, in the first timestamp CCS frame
+        pt_cur_CCS = np.array([0, 0, 0, 1])
+        est_pt_ref_CCS = np.matmul(cur_pose, pt_cur_CCS)
+        # No need to unhomogenize as 4th coordinate is 1 already
+        estimated_path.append((est_pt_ref_CCS[0], est_pt_ref_CCS[2]))
+
+    # Compute per-frame Euclidean distance in XZ plane
+    diffs = [np.linalg.norm(np.array(est) - np.array(gt)) for est, gt in zip(estimated_path, gt_path)]
+    mean_error = np.mean(diffs)
+    rmse = np.sqrt(np.mean(np.square(diffs)))
+    return estimated_path, mean_error, rmse
 
 
 class ORB_VO:
@@ -96,14 +132,14 @@ class ORB_VO:
 
 
 if __name__ == "__main__":
-    kitti = KITTI_odom_loader(root="/home/dynamo/Music/visualOdometry/KITTI_odom", seqnum=1, lr="l", color=True)
+    kitti = KITTI_odom_loader(root="/home/dynamo/Music/visodom/visual_odometry/KITTI_odom", seqnum=1, lr="l", color=True)
     orb_feat = ORB_VO(K=kitti.K, W=kitti.W, H=kitti.H)
 
     # play_trip(kitti.images)
 
     gt_path = []
     estimated_path = []
-    for i, gt_pose in enumerate(tqdm(kitti.gt_poses[:100], unit="pose")):
+    for i, gt_pose in enumerate(tqdm(kitti.gt_poses, unit="pose")):
         if i == 0:
             cur_pose = gt_pose
         else:
@@ -121,3 +157,8 @@ if __name__ == "__main__":
         estimated_path.append((est_pt_ref_CCS[0], est_pt_ref_CCS[2]))
         gt_path.append((gt_pt_ref_CCS[0], gt_pt_ref_CCS[2]))
     plotting.visualize_paths(gt_path, estimated_path, "Visual Odometry", file_out="orb.html")
+
+    est_path, mean_error, rmse = calc_accuracy(kitti.K, kitti.W, kitti.H, gt_path, kitti.images)
+    print("Mean error: ", mean_error)
+    print("RMSE: ", rmse)
+
